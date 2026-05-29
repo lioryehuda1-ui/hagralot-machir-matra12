@@ -279,6 +279,7 @@ def generate_html(projects, repo_url=""):
     </table>
   </div>
   <p class="note">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100</p>
+  <p class="note" style="margin-top:6px">Built by Lior Yehuda</p>
   <script>
     if ('serviceWorker' in navigator) {{
       navigator.serviceWorker.register('./sw.js');
