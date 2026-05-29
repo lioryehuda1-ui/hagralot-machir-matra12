@@ -274,7 +274,17 @@ def generate_html(projects, repo_url=""):
       <tbody>{rows_html}</tbody>
     </table>
   </div>
-  <p class="note">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100</p>
+  <div id="install-bar" style="display:none; margin-top:14px; text-align:center">
+    <button id="install-btn" style="padding:10px 24px; background:#1a5276; color:white;
+      border:none; border-radius:24px; font-size:15px; cursor:pointer;">
+      📲 הוסף למסך הבית
+    </button>
+  </div>
+  <p id="ios-hint" style="display:none; margin-top:14px; text-align:center;
+     font-size:13px; color:#555;">
+    באייפון: לחץ ↑ שיתוף ← "הוסף למסך הבית"
+  </p>
+  <p class="note" style="margin-top:14px">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100</p>
   <p class="note" style="margin-top:6px">Built by Lior Yehuda</p>
   <script>
     if ('serviceWorker' in navigator) {{
@@ -288,6 +298,33 @@ def generate_html(projects, repo_url=""):
         hour:'2-digit', minute:'2-digit'
       }});
     }});
+
+    // כפתור התקנה - אנדרואיד
+    let deferredPrompt;
+    window.addEventListener('beforeinstallprompt', e => {{
+      e.preventDefault();
+      deferredPrompt = e;
+      document.getElementById('install-bar').style.display = 'block';
+    }});
+    document.getElementById('install-btn')?.addEventListener('click', async () => {{
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const {{ outcome }} = await deferredPrompt.userChoice;
+      deferredPrompt = null;
+      if (outcome === 'accepted') {{
+        document.getElementById('install-bar').style.display = 'none';
+      }}
+    }});
+    window.addEventListener('appinstalled', () => {{
+      document.getElementById('install-bar').style.display = 'none';
+    }});
+
+    // הוראה לאייפון
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    if (isIOS && !isStandalone) {{
+      document.getElementById('ios-hint').style.display = 'block';
+    }}
   </script>
 </body>
 </html>"""
