@@ -137,27 +137,27 @@ def write_pwa_files(base_dir):
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    # Service worker — cache-first לטעינה מהירה
-    sw = """const CACHE = 'hagralot-v1';
-self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(['./'])));
-  self.skipWaiting();
-});
-self.addEventListener('activate', e => {
+    # Service worker — network-first (תמיד מביא עדכון טרי)
+    cache_ver = datetime.now().strftime("%Y%m%d%H%M")
+    sw = f"""const CACHE = 'hagralot-{cache_ver}';
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', e => {{
   e.waitUntil(caches.keys().then(keys =>
     Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
   ));
   self.clients.claim();
-});
-self.addEventListener('fetch', e => {
+}});
+self.addEventListener('fetch', e => {{
   e.respondWith(
-    fetch(e.request).then(res => {
-      const clone = res.clone();
-      caches.open(CACHE).then(c => c.put(e.request, clone));
-      return res;
-    }).catch(() => caches.match(e.request))
+    fetch(e.request)
+      .then(res => {{
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      }})
+      .catch(() => caches.match(e.request))
   );
-});
+}});
 """
     (base_dir / "sw.js").write_text(sw, encoding="utf-8")
 
