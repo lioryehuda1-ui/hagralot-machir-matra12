@@ -3,14 +3,23 @@ name: עדכון יומי - הגרלות מחיר מטרה
 on:
   schedule:
     - cron: "0 6 * * *"   # כל יום ב-09:00 שעון ישראל (UTC+3)
-  workflow_dispatch:        # אפשרות הפעלה ידנית מ-GitHub
+  workflow_dispatch:        # הפעלה ידנית מ-GitHub
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -28,11 +37,16 @@ jobs:
         run: python lottery_check.py
         env:
           CI: "true"
+          GITHUB_REPOSITORY: ${{ github.repository }}
 
-      - name: עדכן index.html ב-GitHub Pages
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add index.html
-          git diff --cached --quiet || git commit -m "עדכון אוטומטי $(date +'%Y-%m-%d %H:%M')"
-          git push
+      - name: הכן לפריסה
+        uses: actions/configure-pages@v5
+
+      - name: העלה קבצים
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "."
+
+      - name: פרוס ל-GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
