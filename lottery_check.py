@@ -199,11 +199,7 @@ def generate_html(projects, repo_url=""):
           <td>{price}</td>
         </tr>"""
 
-    if repo_url:
-        actions_url = f"{repo_url}/actions/workflows/update.yml"
-        update_btn = f'<a href="{actions_url}" target="_blank" class="btn">עדכן ידנית ↗</a>'
-    else:
-        update_btn = '<a href="עדכן.bat" class="btn">עדכן עכשיו</a>'
+    update_btn = ""
 
     return f"""<!DOCTYPE html>
 <html dir="rtl" lang="he">
