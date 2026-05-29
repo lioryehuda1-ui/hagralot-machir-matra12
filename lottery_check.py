@@ -287,8 +287,11 @@ def generate_html(projects, repo_url=""):
   <p class="note" style="margin-top:14px">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100</p>
   <p class="note" style="margin-top:6px">Built by Lior Yehuda</p>
   <script>
+    // מבטל service workers ישנים שגורמים לדף לבן
     if ('serviceWorker' in navigator) {{
-      navigator.serviceWorker.register('./sw.js');
+      navigator.serviceWorker.getRegistrations().then(regs => {{
+        regs.forEach(r => r.unregister());
+      }});
     }}
     // המר שעת UTC לשעון מקומי של המשתמש
     document.querySelectorAll('time[datetime]').forEach(el => {{
