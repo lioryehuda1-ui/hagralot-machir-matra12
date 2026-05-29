@@ -2,7 +2,7 @@ name: עדכון יומי - הגרלות מחיר מטרה
 
 on:
   schedule:
-    - cron: "0 6 * * *"   # כל יום ב-09:00 שעון ישראל (UTC+3)
+    - cron: "0 * * * *"    # כל שעה עגולה
   workflow_dispatch:        # הפעלה ידנית מ-GitHub
 
 permissions:
@@ -46,6 +46,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: "."
+          # כולל index.html, manifest.json, sw.js, icon.svg
 
       - name: פרוס ל-GitHub Pages
         id: deployment
