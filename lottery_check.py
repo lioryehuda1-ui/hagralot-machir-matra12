@@ -108,6 +108,36 @@ def parse_project(row):
         return None
 
 
+def group_by_city(projects):
+    """מקבץ הגרלות לפי עיר ומחזיר שורה סיכום לכל עיר."""
+    cities = {}
+    for p in projects:
+        city = p["city"]
+        if city not in cities:
+            cities[city] = {
+                "city": city,
+                "apartments": 0,
+                "registered": 0,
+                "lotteries": 0,
+                "end_date": p["end_date"],
+                "entitlements": set(),
+            }
+        cities[city]["apartments"] += p["apartments"]
+        cities[city]["registered"] += p["registered"]
+        cities[city]["lotteries"] += 1
+        cities[city]["entitlements"].add(p["entitlement"])
+        # שמור את תאריך הסיום הרחוק ביותר
+        if p["end_date"] > cities[city]["end_date"]:
+            cities[city]["end_date"] = p["end_date"]
+
+    result = []
+    for c in cities.values():
+        c["probability"] = c["apartments"] / c["registered"] * 100
+        c["entitlement"] = " / ".join(sorted(c["entitlements"]))
+        result.append(c)
+    return result
+
+
 def row_color(prob):
     if prob >= 5:
         return "#d4edda"
@@ -172,31 +202,26 @@ self.addEventListener('fetch', e => {{
 
 def generate_html(projects, repo_url=""):
     now_dt = datetime.now()
-    # בCI זמן UTC, נציין זאת
     tz_note = " (UTC)" if IS_CI else ""
     now_str = now_dt.strftime(f"%d/%m/%Y %H:%M{tz_note}")
     now_iso = now_dt.strftime("%Y-%m-%dT%H:%M:%S")
 
-    sorted_p = sorted(projects, key=lambda x: x["probability"], reverse=True)
+    cities = group_by_city(projects)
+    sorted_cities = sorted(cities, key=lambda x: x["probability"], reverse=True)
 
     rows_html = ""
-    for p in sorted_p:
-        color = row_color(p["probability"])
-        contractor = p["contractor"]
-        if len(contractor) > 35:
-            contractor = contractor[:33] + "..."
-        price = f'₪{p["price_per_sqm"]:,.0f}' if p["price_per_sqm"] else "-"
+    for i, c in enumerate(sorted_cities, 1):
+        color = row_color(c["probability"])
+        lot_label = f'{c["lotteries"]} הגרלות' if c["lotteries"] > 1 else "הגרלה 1"
         rows_html += f"""
         <tr style="background:{color}">
-          <td>{p['id']}</td>
-          <td>{p['city']}</td>
-          <td title="{p['contractor']}">{contractor}</td>
-          <td>{p['entitlement']}</td>
-          <td>{p['apartments']:,}</td>
-          <td>{p['registered']:,}</td>
-          <td><strong>{p['probability']:.2f}%</strong></td>
-          <td>{p['end_date']}</td>
-          <td>{price}</td>
+          <td style="font-weight:bold;color:#1a5276">{i}</td>
+          <td style="font-weight:bold">{c['city']}</td>
+          <td style="color:#666;font-size:12px">{lot_label}</td>
+          <td>{c['apartments']:,}</td>
+          <td>{c['registered']:,}</td>
+          <td><strong>{c['probability']:.2f}%</strong></td>
+          <td>{c['end_date']}</td>
         </tr>"""
 
     update_btn = ""
@@ -245,7 +270,7 @@ def generate_html(projects, repo_url=""):
 <body>
   <div class="header">
     <h1>🏠 הגרלות מחיר מטרה</h1>
-    <p class="count">{len(sorted_p)} הגרלות פתוחות</p>
+    <p class="count">{len(sorted_cities)} ערים | {len(projects)} הגרלות</p>
     <div class="update-bar" style="margin-top:10px">
       <span class="update-time">עודכן: <time datetime="{now_iso}">{now_str}</time></span>
       {update_btn}
@@ -260,15 +285,13 @@ def generate_html(projects, repo_url=""):
     <table>
       <thead>
         <tr>
-          <th>מספר</th>
-          <th>יישוב</th>
-          <th>קבלן</th>
-          <th>זכאות</th>
-          <th>דירות</th>
-          <th>נרשמים</th>
-          <th>סיכוי</th>
+          <th>#</th>
+          <th>עיר</th>
+          <th>הגרלות</th>
+          <th>סה"כ דירות</th>
+          <th>סה"כ נרשמים</th>
+          <th>סיכוי זכייה</th>
           <th>סיום הרשמה</th>
-          <th>מחיר למ"ר</th>
         </tr>
       </thead>
       <tbody>{rows_html}</tbody>
@@ -284,7 +307,7 @@ def generate_html(projects, repo_url=""):
      font-size:13px; color:#555;">
     באייפון: לחץ ↑ שיתוף ← "הוסף למסך הבית"
   </p>
-  <p class="note" style="margin-top:14px">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100</p>
+  <p class="note" style="margin-top:14px">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = סה"כ דירות בעיר ÷ סה"כ נרשמים × 100</p>
   <p class="note" style="margin-top:6px">Built by Lior Yehuda</p>
   <script>
     // מבטל service workers ישנים שגורמים לדף לבן
