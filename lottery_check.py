@@ -140,7 +140,7 @@ def group_by_city(projects):
 
         # חישובים פיננסיים (רוכש ראשון: 25% הון עצמי, משכנתא 75%)
         avg_sqm = c.get("price_sum", 0) / c.get("price_count", 1) if c.get("price_count") else 0
-        apt_size = 109  # מ"ר ממוצע (4 חדרים) — מבוסס נתוני אמת
+        apt_size = 107  # מ"ר ממוצע (4 חדרים) — מבוסס 259 עסקאות אמת
         apt_price = avg_sqm * apt_size if avg_sqm else 0
         equity     = apt_price * 0.25          # 25% הון עצמי
         mortgage   = apt_price * 0.75          # 75% משכנתא
@@ -367,8 +367,8 @@ def generate_html(projects, repo_url=""):
     const FIXED = 0.055;         // קל"צ
     const ADJUST5 = 0.048;       // משתנה כל 5 שנים
     const YEARS = 25;
-    // גדלים מבוססי נתוני אמת מ-116 עסקאות מחיר מטרה
-    const ROOM_SIZES = {{3: 88, 4: 109, 5: 128}};
+    // גדלים מבוססי נתוני אמת מ-259 עסקאות (2 פרויקטים)
+    const ROOM_SIZES = {{3: 83, 4: 107, 5: 126, 6: 140}};
 
     function monthly(principal, annualRate, years) {{
       if (principal <= 0) return 0;
@@ -479,7 +479,7 @@ def generate_html(projects, repo_url=""):
         </div>
 
         <div class="warn" style="margin-top:16px">
-          ⚠️ <strong>שים לב:</strong> גדלי הדירות מבוססים על נתוני אמת (116 עסקאות): 3 חד׳=88מ"ר, 4 חד׳=109מ"ר, 5 חד׳=128מ"ר.
+          ⚠️ <strong>שים לב:</strong> גדלי הדירות מבוססים על נתוני אמת (259 עסקאות, 2 פרויקטים): 3 חד׳=83מ"ר, 4 חד׳=107מ"ר, 5 חד׳=126מ"ר, 6 חד׳=140מ"ר.
           מסלול הפריים משתנה עם ריבית בנק ישראל. מומלץ להתייעץ עם יועץ משכנתאות לפני קבלת החלטה.
         </div>`;
     }}
