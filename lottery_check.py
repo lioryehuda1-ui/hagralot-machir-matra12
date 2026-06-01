@@ -126,14 +126,35 @@ def group_by_city(projects):
         cities[city]["registered"] += p["registered"]
         cities[city]["lotteries"] += 1
         cities[city]["entitlements"].add(p["entitlement"])
-        # שמור את תאריך הסיום הרחוק ביותר
         if p["end_date"] > cities[city]["end_date"]:
             cities[city]["end_date"] = p["end_date"]
+        # ממוצע מחיר למ"ר משוקלל לפי דירות
+        if p["price_per_sqm"]:
+            cities[city]["price_sum"] = cities[city].get("price_sum", 0) + p["price_per_sqm"] * p["apartments"]
+            cities[city]["price_count"] = cities[city].get("price_count", 0) + p["apartments"]
 
     result = []
     for c in cities.values():
         c["probability"] = c["apartments"] / c["registered"] * 100
         c["entitlement"] = " / ".join(sorted(c["entitlements"]))
+
+        # חישובים פיננסיים (רוכש ראשון: 25% הון עצמי, משכנתא 75%)
+        avg_sqm = c.get("price_sum", 0) / c.get("price_count", 1) if c.get("price_count") else 0
+        apt_size = 80  # מ"ר ממוצע לדירת מחיר מטרה
+        apt_price = avg_sqm * apt_size if avg_sqm else 0
+        equity     = apt_price * 0.25          # 25% הון עצמי
+        mortgage   = apt_price * 0.75          # 75% משכנתא
+        # החזר חודשי: ריבית 5% ל-25 שנה
+        r = 0.05 / 12
+        n = 25 * 12
+        monthly = mortgage * (r * (1+r)**n) / ((1+r)**n - 1) if mortgage > 0 else 0
+        min_income = monthly * 3  # כלל האצבע: משכנתא = עד 1/3 מהכנסה
+
+        c["avg_price_sqm"] = avg_sqm
+        c["apt_price"]  = apt_price
+        c["equity"]     = equity
+        c["monthly"]    = monthly
+        c["min_income"] = min_income
         result.append(c)
     return result
 
@@ -213,6 +234,10 @@ def generate_html(projects, repo_url=""):
     for i, c in enumerate(sorted_cities, 1):
         color = row_color(c["probability"])
         lot_label = f'{c["lotteries"]} הגרלות' if c["lotteries"] > 1 else "הגרלה 1"
+        price_str   = f'₪{c["apt_price"]:,.0f}'   if c["apt_price"]  else "—"
+        equity_str  = f'₪{c["equity"]:,.0f}'      if c["equity"]     else "—"
+        monthly_str = f'₪{c["monthly"]:,.0f}'     if c["monthly"]    else "—"
+        income_str  = f'₪{c["min_income"]:,.0f}'  if c["min_income"] else "—"
         rows_html += f"""
         <tr style="background:{color}">
           <td style="font-weight:bold;color:#1a5276">{i}</td>
@@ -221,6 +246,10 @@ def generate_html(projects, repo_url=""):
           <td>{c['apartments']:,}</td>
           <td>{c['registered']:,}</td>
           <td><strong>{c['probability']:.2f}%</strong></td>
+          <td>{price_str}</td>
+          <td>{equity_str}</td>
+          <td>{monthly_str}</td>
+          <td>{income_str}</td>
           <td>{c['end_date']}</td>
         </tr>"""
 
@@ -288,9 +317,13 @@ def generate_html(projects, repo_url=""):
           <th>#</th>
           <th>עיר</th>
           <th>הגרלות</th>
-          <th>סה"כ דירות</th>
-          <th>סה"כ נרשמים</th>
-          <th>סיכוי זכייה</th>
+          <th>דירות</th>
+          <th>נרשמים</th>
+          <th>סיכוי</th>
+          <th>מחיר משוער לדירה</th>
+          <th>הון עצמי נדרש</th>
+          <th>החזר חודשי</th>
+          <th>הכנסה נדרשת</th>
           <th>סיום הרשמה</th>
         </tr>
       </thead>
@@ -307,7 +340,10 @@ def generate_html(projects, repo_url=""):
      font-size:13px; color:#555;">
     באייפון: לחץ ↑ שיתוף ← "הוסף למסך הבית"
   </p>
-  <p class="note" style="margin-top:14px">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = סה"כ דירות בעיר ÷ סה"כ נרשמים × 100</p>
+  <p class="note" style="margin-top:14px">
+    מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100 &nbsp;•&nbsp;
+    מחיר משוער = מחיר למ"ר × 80מ"ר &nbsp;•&nbsp; הון עצמי 25% &nbsp;•&nbsp; משכנתא 75% בריבית 5% ל-25 שנה
+  </p>
   <p class="note" style="margin-top:6px">Built by Lior Yehuda</p>
   <script>
     // מבטל service workers ישנים שגורמים לדף לבן
