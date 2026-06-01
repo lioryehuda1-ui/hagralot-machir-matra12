@@ -230,30 +230,31 @@ def generate_html(projects, repo_url=""):
     cities = group_by_city(projects)
     sorted_cities = sorted(cities, key=lambda x: x["probability"], reverse=True)
 
+    # הכן נתוני ערים כ-JSON להזרקה ל-JS
+    cities_json = json.dumps([
+        {"city": c["city"], "sqm": round(c["avg_price_sqm"]), "prob": round(c["probability"], 2),
+         "apartments": c["apartments"], "registered": c["registered"],
+         "lotteries": c["lotteries"], "end_date": c["end_date"]}
+        for c in sorted_cities
+    ], ensure_ascii=False)
+
     rows_html = ""
     for i, c in enumerate(sorted_cities, 1):
         color = row_color(c["probability"])
         lot_label = f'{c["lotteries"]} הגרלות' if c["lotteries"] > 1 else "הגרלה 1"
-        price_str   = f'₪{c["apt_price"]:,.0f}'   if c["apt_price"]  else "—"
-        equity_str  = f'₪{c["equity"]:,.0f}'      if c["equity"]     else "—"
-        monthly_str = f'₪{c["monthly"]:,.0f}'     if c["monthly"]    else "—"
-        income_str  = f'₪{c["min_income"]:,.0f}'  if c["min_income"] else "—"
+        sqm_str = f'₪{c["avg_price_sqm"]:,.0f}' if c["avg_price_sqm"] else "—"
         rows_html += f"""
-        <tr style="background:{color}">
+        <tr style="background:{color}" onclick="openModal({i-1})" class="clickable">
           <td style="font-weight:bold;color:#1a5276">{i}</td>
           <td style="font-weight:bold">{c['city']}</td>
           <td style="color:#666;font-size:12px">{lot_label}</td>
           <td>{c['apartments']:,}</td>
           <td>{c['registered']:,}</td>
           <td><strong>{c['probability']:.2f}%</strong></td>
-          <td>{price_str}</td>
-          <td>{equity_str}</td>
-          <td>{monthly_str}</td>
-          <td>{income_str}</td>
+          <td>{sqm_str}</td>
           <td>{c['end_date']}</td>
+          <td style="text-align:center;color:#1a5276;font-size:16px">📊</td>
         </tr>"""
-
-    update_btn = ""
 
     return f"""<!DOCTYPE html>
 <html dir="rtl" lang="he">
@@ -270,102 +271,243 @@ def generate_html(projects, repo_url=""):
   <style>
     * {{ box-sizing: border-box; margin: 0; padding: 0; }}
     body {{ font-family: Arial, sans-serif; direction: rtl; background: #f0f4f8; padding: 16px; }}
-    .header {{ background: #1a5276; color: white; border-radius: 12px; padding: 16px 20px;
-               margin-bottom: 14px; }}
-    .header h1 {{ font-size: 20px; margin-bottom: 6px; }}
-    .update-bar {{ display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }}
-    .update-time {{ font-size: 13px; opacity: 0.85; }}
-    .update-time time {{ font-weight: bold; }}
-    .btn {{ padding: 6px 16px; background: rgba(255,255,255,0.2); color: white;
-             border-radius: 20px; text-decoration: none; font-size: 13px;
-             border: 1px solid rgba(255,255,255,0.4); white-space: nowrap; }}
-    .btn:hover {{ background: rgba(255,255,255,0.35); }}
+    .header {{ background: #1a5276; color: white; border-radius: 12px; padding: 16px 20px; margin-bottom: 14px; }}
+    .header h1 {{ font-size: 20px; margin-bottom: 4px; }}
+    .update-time {{ font-size: 13px; opacity: 0.85; margin-top: 8px; }}
     .legend {{ margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; }}
     .legend span {{ padding: 4px 12px; border-radius: 20px; font-size: 13px; }}
-    .green  {{ background: #d4edda; }}
-    .yellow {{ background: #fff3cd; }}
-    .red    {{ background: #f8d7da; }}
-    .table-wrap {{ overflow-x: auto; border-radius: 10px;
-                   box-shadow: 0 2px 8px rgba(0,0,0,.1); }}
-    table {{ border-collapse: collapse; width: 100%; background: white; min-width: 600px; }}
-    th {{ background: #1a5276; color: white; padding: 11px 12px; text-align: right; font-size: 13px; }}
+    .green  {{ background: #d4edda; }} .yellow {{ background: #fff3cd; }} .red {{ background: #f8d7da; }}
+    .table-wrap {{ overflow-x: auto; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,.1); }}
+    table {{ border-collapse: collapse; width: 100%; background: white; min-width: 500px; }}
+    th {{ background: #1a5276; color: white; padding: 10px 12px; text-align: right; font-size: 13px; }}
     td {{ padding: 9px 12px; border-bottom: 1px solid #eee; font-size: 13px; }}
     tr:last-child td {{ border-bottom: none; }}
-    tr:hover {{ filter: brightness(0.96); }}
-    .note {{ margin-top: 12px; color: #999; font-size: 11px; text-align: center; }}
+    .clickable {{ cursor: pointer; }} .clickable:hover {{ filter: brightness(0.93); }}
+    .note {{ margin-top: 10px; color: #999; font-size: 11px; text-align: center; }}
     .count {{ font-size: 13px; opacity: 0.75; margin-top: 2px; }}
+
+    /* Modal */
+    .overlay {{ display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); z-index:100; overflow-y:auto; padding:16px; }}
+    .overlay.open {{ display:block; }}
+    .modal {{ background:white; border-radius:14px; max-width:700px; margin:auto; padding:20px; position:relative; }}
+    .modal h2 {{ color:#1a5276; font-size:18px; margin-bottom:4px; }}
+    .modal .close {{ position:absolute; top:14px; left:16px; font-size:22px; cursor:pointer; color:#888; border:none; background:none; }}
+    .modal-section {{ margin-top:18px; }}
+    .modal-section h3 {{ font-size:14px; color:#444; margin-bottom:8px; border-bottom:2px solid #e8f0fe; padding-bottom:4px; }}
+    .tabs {{ display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; }}
+    .tab {{ padding:6px 16px; border-radius:20px; border:2px solid #1a5276; color:#1a5276;
+            cursor:pointer; font-size:13px; background:white; }}
+    .tab.active {{ background:#1a5276; color:white; }}
+    .mtable {{ width:100%; border-collapse:collapse; font-size:13px; }}
+    .mtable th {{ background:#f0f4f8; color:#333; padding:8px 10px; text-align:right; }}
+    .mtable td {{ padding:8px 10px; border-bottom:1px solid #f0f0f0; }}
+    .mtable tr:last-child td {{ border:none; font-weight:bold; background:#e8f0fe; }}
+    .scenario-box {{ display:flex; gap:10px; flex-wrap:wrap; margin-top:8px; }}
+    .scard {{ flex:1; min-width:130px; padding:10px 14px; border-radius:10px; font-size:13px; }}
+    .scard .label {{ font-size:11px; color:#666; margin-bottom:4px; }}
+    .scard .val {{ font-size:16px; font-weight:bold; }}
+    .scard.base {{ background:#e8f0fe; }}
+    .scard.up {{ background:#fde8e8; }}
+    .scard.down {{ background:#e8fde8; }}
+    .warn {{ background:#fff8e1; border-right:4px solid #ffc107; padding:10px 14px;
+             border-radius:6px; font-size:13px; margin-top:10px; color:#555; }}
   </style>
 </head>
 <body>
   <div class="header">
     <h1>🏠 הגרלות מחיר מטרה</h1>
-    <p class="count">{len(sorted_cities)} ערים | {len(projects)} הגרלות</p>
-    <div class="update-bar" style="margin-top:10px">
-      <span class="update-time">עודכן: <time datetime="{now_iso}">{now_str}</time></span>
-      {update_btn}
-    </div>
+    <p class="count">{len(sorted_cities)} ערים | {len(projects)} הגרלות פתוחות</p>
+    <div class="update-time">עודכן: <time datetime="{now_iso}">{now_str}</time></div>
   </div>
   <div class="legend">
     <span class="green">ירוק &gt;5%</span>
     <span class="yellow">צהוב 2%–5%</span>
     <span class="red">אדום &lt;2%</span>
   </div>
+  <p style="font-size:12px;color:#888;margin-bottom:8px">לחץ על שורה לניתוח פיננסי מלא 📊</p>
   <div class="table-wrap">
     <table>
       <thead>
         <tr>
-          <th>#</th>
-          <th>עיר</th>
-          <th>הגרלות</th>
-          <th>דירות</th>
-          <th>נרשמים</th>
-          <th>סיכוי</th>
-          <th>מחיר משוער לדירה</th>
-          <th>הון עצמי נדרש</th>
-          <th>החזר חודשי</th>
-          <th>הכנסה נדרשת</th>
-          <th>סיום הרשמה</th>
+          <th>#</th><th>עיר</th><th>הגרלות</th><th>דירות</th>
+          <th>נרשמים</th><th>סיכוי</th><th>מחיר למ"ר</th><th>סיום הרשמה</th><th></th>
         </tr>
       </thead>
       <tbody>{rows_html}</tbody>
     </table>
   </div>
-  <div id="install-bar" style="display:none; margin-top:14px; text-align:center">
-    <button id="install-btn" style="padding:10px 24px; background:#1a5276; color:white;
-      border:none; border-radius:24px; font-size:15px; cursor:pointer;">
-      📲 הוסף למסך הבית
-    </button>
+
+  <div id="install-bar" style="display:none;margin-top:14px;text-align:center">
+    <button id="install-btn" style="padding:10px 24px;background:#1a5276;color:white;
+      border:none;border-radius:24px;font-size:15px;cursor:pointer;">📲 הוסף למסך הבית</button>
   </div>
-  <p id="ios-hint" style="display:none; margin-top:14px; text-align:center;
-     font-size:13px; color:#555;">
+  <p id="ios-hint" style="display:none;margin-top:14px;text-align:center;font-size:13px;color:#555;">
     באייפון: לחץ ↑ שיתוף ← "הוסף למסך הבית"
   </p>
-  <p class="note" style="margin-top:14px">
-    מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; סיכוי = דירות ÷ נרשמים × 100 &nbsp;•&nbsp;
-    מחיר משוער = מחיר למ"ר × 80מ"ר &nbsp;•&nbsp; הון עצמי 25% &nbsp;•&nbsp; משכנתא 75% בריבית 5% ל-25 שנה
-  </p>
+  <p class="note" style="margin-top:14px">מתעדכן אוטומטית כל שעה &nbsp;•&nbsp; לחץ שורה לניתוח פיננסי</p>
   <p class="note" style="margin-top:6px">Built by Lior Yehuda</p>
+
+  <!-- Modal -->
+  <div class="overlay" id="overlay" onclick="closeModal(event)">
+    <div class="modal" id="modal">
+      <button class="close" onclick="closeOverlay()">✕</button>
+      <h2 id="modal-title"></h2>
+      <p id="modal-sub" style="font-size:13px;color:#666;margin-top:2px"></p>
+      <div id="modal-tabs" class="tabs"></div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
   <script>
-    // מבטל service workers ישנים שגורמים לדף לבן
-    if ('serviceWorker' in navigator) {{
-      navigator.serviceWorker.getRegistrations().then(regs => {{
-        regs.forEach(r => r.unregister());
-      }});
+    const CITIES = {cities_json};
+
+    // ריביות עדכניות (יוני 2025)
+    const PRIME = 0.06;          // ריבית פריים שנתית
+    const PRIME_SPREAD = -0.005; // מרווח פריים מינוס חצי אחוז
+    const FIXED = 0.055;         // קל"צ
+    const ADJUST5 = 0.048;       // משתנה כל 5 שנים
+    const YEARS = 25;
+    const ROOM_SIZES = {{3: 65, 4: 85, 5: 110}};
+
+    function monthly(principal, annualRate, years) {{
+      if (principal <= 0) return 0;
+      const r = annualRate / 12, n = years * 12;
+      return principal * (r * Math.pow(1+r, n)) / (Math.pow(1+r, n) - 1);
     }}
-    // המר שעת UTC לשעון מקומי של המשתמש
+
+    function fmt(n) {{
+      return '₪' + Math.round(n).toLocaleString('he-IL');
+    }}
+
+    function calcCity(sqmPrice, rooms, primeDelta) {{
+      const size = ROOM_SIZES[rooms];
+      const price = sqmPrice * size;
+      const equity = price * 0.25;
+      const mortTotal = price * 0.75;
+      const third = mortTotal / 3;
+
+      const primeRate = PRIME + PRIME_SPREAD + primeDelta;
+      const m1 = monthly(third, primeRate, YEARS);   // פריים
+      const m2 = monthly(third, FIXED,    YEARS);    // קל"צ
+      const m3 = monthly(third, ADJUST5,  YEARS);    // משתנה 5Y
+      const totalMonthly = m1 + m2 + m3;
+      const totalPaid = totalMonthly * YEARS * 12;
+      const interest = totalPaid - mortTotal;
+
+      return {{ price, equity, mortTotal, m1, m2, m3, totalMonthly, totalPaid, interest,
+               minIncome: totalMonthly * 3 }};
+    }}
+
+    let currentCity = null;
+    let currentRooms = 4;
+
+    function openModal(idx) {{
+      currentCity = CITIES[idx];
+      currentRooms = 4;
+      renderModal();
+      document.getElementById('overlay').classList.add('open');
+    }}
+
+    function renderModal() {{
+      const c = currentCity;
+      document.getElementById('modal-title').textContent = '📊 ' + c.city;
+      document.getElementById('modal-sub').textContent =
+        `מחיר למ"ר: ${{fmt(c.sqm)}} | סיכוי: ${{c.prob}}% | ${{c.lotteries}} הגרלות | סיום: ${{c.end_date}}`;
+
+      // טאבים
+      const tabs = document.getElementById('modal-tabs');
+      tabs.innerHTML = [3,4,5].map(r =>
+        `<button class="tab ${{r===currentRooms?'active':''}}" onclick="switchRooms(${{r}})">${{r}} חדרים (${{ROOM_SIZES[r]}}מ"ר)</button>`
+      ).join('');
+
+      const d = calcCity(c.sqm, currentRooms, 0);
+      const dUp = calcCity(c.sqm, currentRooms, 0.01);
+      const dDown = calcCity(c.sqm, currentRooms, -0.01);
+
+      document.getElementById('modal-body').innerHTML = `
+        <div class="modal-section">
+          <h3>💰 עלויות הדירה (${{currentRooms}} חדרים, ${{ROOM_SIZES[currentRooms]}}מ"ר)</h3>
+          <div class="scenario-box">
+            <div class="scard base"><div class="label">מחיר הדירה</div><div class="val">${{fmt(d.price)}}</div></div>
+            <div class="scard base"><div class="label">הון עצמי נדרש (25%)</div><div class="val">${{fmt(d.equity)}}</div></div>
+            <div class="scard base"><div class="label">משכנתא (75%)</div><div class="val">${{fmt(d.mortTotal)}}</div></div>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <h3>🏦 פירוט החזר חודשי (25 שנה) — ריבית נוכחית</h3>
+          <table class="mtable">
+            <tr><th>מסלול</th><th>חלק</th><th>ריבית</th><th>החזר חודשי</th></tr>
+            <tr><td>פריים (משתנה)</td><td>${{fmt(d.mortTotal/3)}}</td>
+                <td>${{((PRIME+PRIME_SPREAD)*100).toFixed(1)}}%</td><td>${{fmt(d.m1)}}</td></tr>
+            <tr><td>קל"צ (קבועה)</td><td>${{fmt(d.mortTotal/3)}}</td>
+                <td>${{(FIXED*100).toFixed(1)}}%</td><td>${{fmt(d.m2)}}</td></tr>
+            <tr><td>משתנה כל 5 שנים</td><td>${{fmt(d.mortTotal/3)}}</td>
+                <td>${{(ADJUST5*100).toFixed(1)}}%</td><td>${{fmt(d.m3)}}</td></tr>
+            <tr><td colspan="3">סה"כ החזר חודשי</td><td>${{fmt(d.totalMonthly)}}</td></tr>
+          </table>
+        </div>
+
+        <div class="modal-section">
+          <h3>📈 תרחישי ריבית פריים</h3>
+          <div class="scenario-box">
+            <div class="scard down">
+              <div class="label">פריים יורד 1%</div>
+              <div class="val">${{fmt(dDown.totalMonthly)}}/חודש</div>
+              <div class="label" style="margin-top:4px">חיסכון: ${{fmt(d.totalMonthly-dDown.totalMonthly)}}/חודש</div>
+            </div>
+            <div class="scard base">
+              <div class="label">ריבית נוכחית</div>
+              <div class="val">${{fmt(d.totalMonthly)}}/חודש</div>
+            </div>
+            <div class="scard up">
+              <div class="label">פריים עולה 1%</div>
+              <div class="val">${{fmt(dUp.totalMonthly)}}/חודש</div>
+              <div class="label" style="margin-top:4px">תוספת: ${{fmt(dUp.totalMonthly-d.totalMonthly)}}/חודש</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <h3>📊 סה"כ לאורך 25 שנה</h3>
+          <div class="scenario-box">
+            <div class="scard base"><div class="label">סה"כ תשלומים</div><div class="val">${{fmt(d.totalPaid)}}</div></div>
+            <div class="scard up"><div class="label">מתוכם ריבית</div><div class="val">${{fmt(d.interest)}}</div></div>
+            <div class="scard base"><div class="label">הכנסה חודשית נדרשת</div><div class="val">${{fmt(d.minIncome)}}</div></div>
+          </div>
+        </div>
+
+        <div class="warn" style="margin-top:16px">
+          ⚠️ <strong>שים לב:</strong> אלו הערכות בלבד. מסלול הפריים משתנה עם ריבית בנק ישראל.
+          מומלץ לבצע סימולציה מול יועץ משכנתאות לפני קבלת החלטה.
+        </div>`;
+    }}
+
+    function switchRooms(r) {{
+      currentRooms = r;
+      renderModal();
+    }}
+
+    function closeModal(e) {{
+      if (e.target === document.getElementById('overlay')) closeOverlay();
+    }}
+    function closeOverlay() {{
+      document.getElementById('overlay').classList.remove('open');
+    }}
+    document.addEventListener('keydown', e => {{ if(e.key==='Escape') closeOverlay(); }});
+
+    // המר שעת UTC לשעון מקומי
     document.querySelectorAll('time[datetime]').forEach(el => {{
       const d = new Date(el.getAttribute('datetime') + 'Z');
       el.textContent = d.toLocaleString('he-IL', {{
-        day:'2-digit', month:'2-digit', year:'numeric',
-        hour:'2-digit', minute:'2-digit'
+        day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit'
       }});
     }});
 
-    // כפתור התקנה - אנדרואיד
+    // PWA install
     let deferredPrompt;
     window.addEventListener('beforeinstallprompt', e => {{
-      e.preventDefault();
-      deferredPrompt = e;
+      e.preventDefault(); deferredPrompt = e;
       document.getElementById('install-bar').style.display = 'block';
     }});
     document.getElementById('install-btn')?.addEventListener('click', async () => {{
@@ -373,19 +515,18 @@ def generate_html(projects, repo_url=""):
       deferredPrompt.prompt();
       const {{ outcome }} = await deferredPrompt.userChoice;
       deferredPrompt = null;
-      if (outcome === 'accepted') {{
-        document.getElementById('install-bar').style.display = 'none';
-      }}
+      if (outcome === 'accepted') document.getElementById('install-bar').style.display = 'none';
     }});
     window.addEventListener('appinstalled', () => {{
       document.getElementById('install-bar').style.display = 'none';
     }});
-
-    // הוראה לאייפון
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
-    if (isIOS && !isStandalone) {{
-      document.getElementById('ios-hint').style.display = 'block';
+    if (isIOS && !isStandalone) document.getElementById('ios-hint').style.display = 'block';
+
+    // ביטול SW ישנים
+    if ('serviceWorker' in navigator) {{
+      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister()));
     }}
   </script>
 </body>
