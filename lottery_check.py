@@ -311,6 +311,13 @@ def generate_html(projects, repo_url=""):
     .scard.down {{ background:#e8fde8; }}
     .warn {{ background:#fff8e1; border-right:4px solid #ffc107; padding:10px 14px;
              border-radius:6px; font-size:13px; margin-top:10px; color:#555; }}
+    .track-cards {{ display:grid; grid-template-columns:repeat(4,1fr); gap:8px; }}
+    @media(max-width:500px) {{ .track-cards {{ grid-template-columns:repeat(2,1fr); }} }}
+    .tcard {{ background:#f0f4f8; border-radius:8px; padding:10px; text-align:center; }}
+    .tcard-total {{ background:#e8f0fe; }}
+    .tcard-name {{ font-size:12px; color:#555; margin-bottom:4px; }}
+    .tcard-rate {{ font-size:12px; color:#888; margin-bottom:6px; }}
+    .tcard-pay {{ font-size:16px; font-weight:bold; color:#1a5276; }}
   </style>
 </head>
 <body>
@@ -436,17 +443,29 @@ def generate_html(projects, repo_url=""):
         </div>
 
         <div class="modal-section">
-          <h3>🏦 פירוט החזר חודשי (25 שנה) — ריבית נוכחית</h3>
-          <table class="mtable">
-            <tr><th>מסלול</th><th>חלק</th><th>ריבית</th><th>החזר חודשי</th></tr>
-            <tr><td>פריים (משתנה)</td><td>${{fmt(d.mortTotal/3)}}</td>
-                <td>${{((PRIME+PRIME_SPREAD)*100).toFixed(1)}}%</td><td>${{fmt(d.m1)}}</td></tr>
-            <tr><td>קל"צ (קבועה)</td><td>${{fmt(d.mortTotal/3)}}</td>
-                <td>${{(FIXED*100).toFixed(1)}}%</td><td>${{fmt(d.m2)}}</td></tr>
-            <tr><td>משתנה כל 5 שנים</td><td>${{fmt(d.mortTotal/3)}}</td>
-                <td>${{(ADJUST5*100).toFixed(1)}}%</td><td>${{fmt(d.m3)}}</td></tr>
-            <tr><td colspan="3">סה"כ החזר חודשי</td><td>${{fmt(d.totalMonthly)}}</td></tr>
-          </table>
+          <h3>🏦 החזר חודשי (25 שנה) — ריבית נוכחית</h3>
+          <div class="track-cards">
+            <div class="tcard">
+              <div class="tcard-name">פריים (משתנה)</div>
+              <div class="tcard-rate">${{((PRIME+PRIME_SPREAD)*100).toFixed(1)}}%</div>
+              <div class="tcard-pay">${{fmt(d.m1)}}</div>
+            </div>
+            <div class="tcard">
+              <div class="tcard-name">קל"צ (קבועה)</div>
+              <div class="tcard-rate">${{(FIXED*100).toFixed(1)}}%</div>
+              <div class="tcard-pay">${{fmt(d.m2)}}</div>
+            </div>
+            <div class="tcard">
+              <div class="tcard-name">משתנה כל 5Y</div>
+              <div class="tcard-rate">${{(ADJUST5*100).toFixed(1)}}%</div>
+              <div class="tcard-pay">${{fmt(d.m3)}}</div>
+            </div>
+            <div class="tcard tcard-total">
+              <div class="tcard-name">סה"כ</div>
+              <div class="tcard-rate">1/3 כל מסלול</div>
+              <div class="tcard-pay">${{fmt(d.totalMonthly)}}</div>
+            </div>
+          </div>
         </div>
 
         <div class="modal-section">
@@ -479,7 +498,7 @@ def generate_html(projects, repo_url=""):
         </div>
 
         <div class="warn" style="margin-top:16px">
-          ⚠️ <strong>שים לב:</strong> גדלי הדירות מבוססים על נתוני אמת (259 עסקאות, 2 פרויקטים): 3 חד׳=83מ"ר, 4 חד׳=107מ"ר, 5 חד׳=126מ"ר, 6 חד׳=140מ"ר.
+          ⚠️ <strong>שים לב:</strong> החישובים הם הערכה בלבד.
           מסלול הפריים משתנה עם ריבית בנק ישראל. מומלץ להתייעץ עם יועץ משכנתאות לפני קבלת החלטה.
         </div>`;
     }}
