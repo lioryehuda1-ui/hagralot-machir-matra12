@@ -260,27 +260,18 @@ def write_pwa_files(base_dir):
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
 
-    # Service worker — network-first (תמיד מביא עדכון טרי)
-    cache_ver = datetime.now().strftime("%Y%m%d%H%M")
-    sw = f"""const CACHE = 'hagralot-{cache_ver}';
+    # Service worker — מבטל את עצמו לגמרי, תמיד מביא מהרשת
+    sw = """// Service worker מבוטל — תמיד טען מהרשת
 self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', e => {{
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
-  self.clients.claim();
-}});
-self.addEventListener('fetch', e => {{
-  e.respondWith(
-    fetch(e.request)
-      .then(res => {{
-        const clone = res.clone();
-        caches.open(CACHE).then(c => c.put(e.request, clone));
-        return res;
-      }})
-      .catch(() => caches.match(e.request))
+self.addEventListener('activate', e => {
+  e.waitUntil(
+    caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
   );
-}});
+  self.clients.claim();
+});
+self.addEventListener('fetch', e => {
+  e.respondWith(fetch(e.request));
+});
 """
     (base_dir / "sw.js").write_text(sw, encoding="utf-8")
 
