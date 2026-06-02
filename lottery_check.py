@@ -317,9 +317,9 @@ def generate_html(projects, repo_url=""):
         color = row_color(c["probability"])
         lot_label = f'{c["lotteries"]} הגרלות' if c["lotteries"] > 1 else "הגרלה 1"
         sqm_str = f'₪{c["avg_price_sqm"]:,.0f}' if c["avg_price_sqm"] else "—"
+        color = row_color(c.get("prob_regular", c["probability"]))
         rows_html += f"""
         <tr style="background:{color}" class="city-row clickable" data-idx="{i-1}"
-            data-all="{c['probability']:.2f}"
             data-combat="{c.get('prob_combat', c['probability']):.2f}"
             data-rear="{c.get('prob_rear', c['probability']):.2f}"
             data-regular="{c.get('prob_regular', c['probability']):.2f}"
@@ -329,7 +329,7 @@ def generate_html(projects, repo_url=""):
           <td style="color:#666;font-size:12px">{lot_label}</td>
           <td>{c['apartments']:,}</td>
           <td>{c['registered']:,}</td>
-          <td class="prob-cell"><strong>{c['probability']:.2f}%</strong></td>
+          <td class="prob-cell"><strong>{c.get('prob_regular', c['probability']):.2f}%</strong></td>
           <td>{sqm_str}</td>
           <td>{c['end_date']}</td>
           <td style="text-align:center;color:#1a5276;font-size:16px">📊</td>
@@ -479,10 +479,9 @@ def generate_html(projects, repo_url=""):
     <span class="red">אדום &lt;2%</span>
   </div>
   <div class="type-selector">
-    <button class="tsel-btn active" onclick="setType('all')" id="btn-all">👤 כללי</button>
-    <button class="tsel-btn" onclick="setType('combat')" id="btn-combat">🪖 לוחם מילואים</button>
+    <button class="tsel-btn active" onclick="setType('regular')" id="btn-regular">👤 זכאי רגיל</button>
     <button class="tsel-btn" onclick="setType('rear')" id="btn-rear">🎖️ עורפי מילואים</button>
-    <button class="tsel-btn" onclick="setType('regular')" id="btn-regular">👤 זכאי רגיל</button>
+    <button class="tsel-btn" onclick="setType('combat')" id="btn-combat">🪖 לוחם מילואים</button>
   </div>
   <p style="font-size:12px;color:#888;margin-bottom:8px">לחץ על שורה לניתוח פיננסי מלא 📊</p>
   <div class="table-wrap">
@@ -528,22 +527,23 @@ def generate_html(projects, repo_url=""):
       return '#f8d7da';
     }}
 
-    let currentType = 'all';
+    let currentType = 'regular';
 
     function setType(type) {{
       currentType = type;
-      // עדכן כפתורים
-      ['all','combat','rear','regular'].forEach(t => {{
+      ['combat','rear','regular'].forEach(t => {{
         document.getElementById('btn-'+t)?.classList.toggle('active', t===type);
       }});
-      // עדכן כל שורות הטבלה
       document.querySelectorAll('tr.city-row').forEach(row => {{
-        const prob = parseFloat(row.dataset[type] || row.dataset.all);
+        const prob = parseFloat(row.dataset[type]);
         row.style.background = getColor(prob);
         const cell = row.querySelector('.prob-cell strong');
         if(cell) cell.textContent = prob.toFixed(2) + '%';
       }});
     }}
+
+    // הצג לפי זכאי רגיל בטעינה
+    document.addEventListener('DOMContentLoaded', () => setType('regular'));
     const MIXES = [
       {{name:'⚖️ מאוזן',       p:0.33,f:0.33,a:0.34, risk:'rmed',stars:'●●●○○',riskTxt:'בינוני',
         pros:['פיזור סיכון טוב','גמישות סבירה'],cons:['לא מיטבי בשום תרחיש']}},
