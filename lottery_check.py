@@ -159,44 +159,56 @@ def group_by_city(projects):
         c["probability"] = c["apartments"] / c["registered"] * 100
         c["entitlement"] = " / ".join(sorted(c["entitlements"]))
 
-        # חישוב סיכויים לפי סוג זכאות (אלגוריתם הפרומפט)
+        # חישוב סיכויים לפי סוג זכאות — מפל ההגרלות
+        # אם יש נתונים אמיתיים מה-API, נשתמש בהם. אחרת — הנחה סטטיסטית:
+        # 10% לוחמים, 10% עורפיים, 80% רגילים
         A_total = c["apartments"]
-        R_combat = c["combat_total"]
-        R_rear = c["rear_total"]
-        R_reg = c["regular_total"]
+        R_total = c["registered"]
+        R_combat_api = c["combat_total"]
+        R_rear_api = c["rear_total"]
 
-        # אם אין מידע על מילואים (כלומר, כל הנתונים 0), השתמש בסיכוי כללי לכולם
-        if R_combat == 0 and R_rear == 0:
-            c["prob_combat"] = c["probability"]
-            c["prob_rear"] = c["probability"]
-            c["prob_regular"] = c["probability"]
+        if R_combat_api > 0 or R_rear_api > 0:
+            # נתוני API אמיתיים
+            R_combat = R_combat_api
+            R_rear = R_rear_api
+            R_reg = R_total - R_combat - R_rear
         else:
-            A_miluim = A_total * 0.50  # 50% למילואים (25% לוחמים + 25% עורפיים)
+            # הנחה סטטיסטית (10% / 10% / 80%)
+            R_combat = R_total * 0.10
+            R_rear   = R_total * 0.10
+            R_reg    = R_total * 0.80
 
-            # שלב 1: הגרלת לוחמים
-            W_combat = min(A_miluim * 0.5, R_combat)  # 25% מהדירות הכוללות
-            P1_combat = W_combat / R_combat if R_combat > 0 else 0
-            A_miluim_rem = A_miluim - W_combat
-            R_combat_rem = R_combat - W_combat
+        # שלב 0: הקצאת דירות
+        A_combat  = A_total * 0.25
+        A_rear    = A_total * 0.25
+        A_general = A_total * 0.50
 
-            # שלב 2: הגרלת עורפיים
-            W_rear = min(A_miluim_rem, R_rear)
-            P2_rear = W_rear / R_rear if R_rear > 0 else 0
-            R_rear_rem = R_rear - W_rear
+        # שלב 1: הגרלת לוחמים
+        W_combat        = min(A_combat, R_combat)
+        P_combat_stage  = W_combat / R_combat if R_combat > 0 else 0
+        Rem_A_combat    = A_combat - W_combat
+        Rem_R_combat    = R_combat - W_combat
 
-            # שלב 3: הגרלה כללית
-            A_gen = A_total - (W_combat + W_rear)
-            G_rem = R_reg + R_combat_rem + R_rear_rem
-            P3_gen = A_gen / G_rem if G_rem > 0 else 0
+        # שלב 2: הגרלת עורפיים (כולל עודפי לוחמים)
+        A_rear_eff   = A_rear + Rem_A_combat
+        W_rear       = min(A_rear_eff, R_rear)
+        P_rear_stage = W_rear / R_rear if R_rear > 0 else 0
+        Rem_A_rear   = A_rear_eff - W_rear
+        Rem_R_rear   = R_rear - W_rear
 
-            # סיכוי סופי לכל סוג
-            P_total_combat = P1_combat + (1 - P1_combat) * P3_gen
-            P_total_rear = P2_rear + (1 - P2_rear) * P3_gen
-            P_total_regular = P3_gen
+        # שלב 3: הגרלה כללית
+        A_gen_eff     = A_general + Rem_A_rear
+        R_gen_eff     = R_reg + Rem_R_combat + Rem_R_rear
+        P_general     = A_gen_eff / R_gen_eff if R_gen_eff > 0 else 0
 
-            c["prob_combat"] = P_total_combat * 100
-            c["prob_rear"] = P_total_rear * 100
-            c["prob_regular"] = P_total_regular * 100
+        # סיכויים סופיים מצטברים
+        P_total_combat  = P_combat_stage + (1 - P_combat_stage) * P_general
+        P_total_rear    = P_rear_stage   + (1 - P_rear_stage)   * P_general
+        P_total_regular = P_general
+
+        c["prob_combat"]  = P_total_combat  * 100
+        c["prob_rear"]    = P_total_rear    * 100
+        c["prob_regular"] = P_total_regular * 100
 
         # חישובים פיננסיים (רוכש ראשון: 25% הון עצמי, משכנתא 75%)
         avg_sqm = c.get("price_sum", 0) / c.get("price_count", 1) if c.get("price_count") else 0
