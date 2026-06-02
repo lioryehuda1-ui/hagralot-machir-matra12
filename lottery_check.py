@@ -302,41 +302,25 @@ def generate_html(projects, repo_url=""):
 
     rows_html = ""
     for i, c in enumerate(sorted_cities, 1):
+        color = row_color(c["probability"])
         lot_label = f'{c["lotteries"]} הגרלות' if c["lotteries"] > 1 else "הגרלה 1"
         sqm_str = f'₪{c["avg_price_sqm"]:,.0f}' if c["avg_price_sqm"] else "—"
         rows_html += f"""
-        <tr style="background:#fff" class="city-row" data-idx="{i-1}">
+        <tr style="background:{color}" class="city-row clickable" data-idx="{i-1}"
+            data-all="{c['probability']:.2f}"
+            data-combat="{c.get('prob_combat', c['probability']):.2f}"
+            data-rear="{c.get('prob_rear', c['probability']):.2f}"
+            data-regular="{c.get('prob_regular', c['probability']):.2f}"
+            onclick="openModal({i-1})">
           <td style="font-weight:bold;color:#1a5276">{i}</td>
           <td style="font-weight:bold">{c['city']}</td>
           <td style="color:#666;font-size:12px">{lot_label}</td>
           <td>{c['apartments']:,}</td>
           <td>{c['registered']:,}</td>
-          <td class="prob-cell" style="cursor:pointer" onclick="openModal({i-1})">
-            <strong style="color:#1a5276">{c['probability']:.2f}%</strong>
-          </td>
+          <td class="prob-cell"><strong>{c['probability']:.2f}%</strong></td>
           <td>{sqm_str}</td>
           <td>{c['end_date']}</td>
-          <td style="text-align:center;color:#1a5276;font-size:16px;cursor:pointer" onclick="openModal({i-1})">📊</td>
-        </tr>
-        <tr class="filter-row" data-idx="{i-1}" style="background:#f9f9f9">
-          <td colspan="9" style="padding:10px;text-align:center;font-size:12px">
-            <label style="margin:0 10px;cursor:pointer">
-              <input type="radio" name="type-{i-1}" value="all" checked onchange="updateRow({i-1})">
-              כללי: <span class="prob-all">{c['probability']:.2f}%</span>
-            </label>
-            <label style="margin:0 10px;cursor:pointer">
-              <input type="radio" name="type-{i-1}" value="combat" onchange="updateRow({i-1})">
-              🪖 לוחם: <span class="prob-combat">{c.get('prob_combat', c['probability']):.2f}%</span>
-            </label>
-            <label style="margin:0 10px;cursor:pointer">
-              <input type="radio" name="type-{i-1}" value="rear" onchange="updateRow({i-1})">
-              🎖️ עורפי: <span class="prob-rear">{c.get('prob_rear', c['probability']):.2f}%</span>
-            </label>
-            <label style="margin:0 10px;cursor:pointer">
-              <input type="radio" name="type-{i-1}" value="regular" onchange="updateRow({i-1})">
-              👤 רגיל: <span class="prob-regular">{c.get('prob_regular', c['probability']):.2f}%</span>
-            </label>
-          </td>
+          <td style="text-align:center;color:#1a5276;font-size:16px">📊</td>
         </tr>"""
 
     return f"""<!DOCTYPE html>
@@ -462,6 +446,13 @@ def generate_html(projects, repo_url=""):
     .aibox h4{{color:#6a1b9a;margin-bottom:5px;font-size:13px}}
     .aibox p{{font-size:12px;color:#333;line-height:1.5}}
     .warn{{background:#fff8e1;border-right:4px solid #ffc107;padding:10px;border-radius:6px;font-size:12px;margin-top:10px;color:#555}}
+
+    /* type selector */
+    .type-selector{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:center}}
+    .tsel-btn{{padding:6px 14px;border-radius:20px;border:2px solid #1a5276;color:#1a5276;
+               background:white;cursor:pointer;font-size:13px;font-weight:bold;transition:all .15s}}
+    .tsel-btn.active{{background:#1a5276;color:white}}
+    .tsel-btn:hover:not(.active){{background:#e8f0fe}}
   </style>
 </head>
 <body>
@@ -474,6 +465,12 @@ def generate_html(projects, repo_url=""):
     <span class="green">ירוק &gt;5%</span>
     <span class="yellow">צהוב 2%–5%</span>
     <span class="red">אדום &lt;2%</span>
+  </div>
+  <div class="type-selector">
+    <button class="tsel-btn active" onclick="setType('all')" id="btn-all">👤 כללי</button>
+    <button class="tsel-btn" onclick="setType('combat')" id="btn-combat">🪖 לוחם מילואים</button>
+    <button class="tsel-btn" onclick="setType('rear')" id="btn-rear">🎖️ עורפי מילואים</button>
+    <button class="tsel-btn" onclick="setType('regular')" id="btn-regular">👤 זכאי רגיל</button>
   </div>
   <p style="font-size:12px;color:#888;margin-bottom:8px">לחץ על שורה לניתוח פיננסי מלא 📊</p>
   <div class="table-wrap">
@@ -513,30 +510,27 @@ def generate_html(projects, repo_url=""):
     const ROOM_SIZES={{3:83,4:107,5:126,6:140}};
     const AVG_SQM_NATIONAL = 16000;
 
-    // צבע לפי סיכוי זכייה
     function getColor(prob) {{
-      if(prob >= 5) return '#d4edda';   // ירוק
-      if(prob >= 2) return '#fff3cd';   // צהוב
-      return '#f8d7da';                 // אדום
+      if(prob >= 5) return '#d4edda';
+      if(prob >= 2) return '#fff3cd';
+      return '#f8d7da';
     }}
 
-    // עדכן שורה בהתאם לבחירת סוג זכאות
-    function updateRow(idx) {{
-      const selectedType = document.querySelector(`input[name="type-${{idx}}"]:checked`).value;
-      const city = CITIES[idx];
-      let prob = city.prob;
+    let currentType = 'all';
 
-      if(selectedType === 'combat') prob = city.prob_combat;
-      else if(selectedType === 'rear') prob = city.prob_rear;
-      else if(selectedType === 'regular') prob = city.prob_regular;
-
-      // עדכן צבע השורה הראשית
-      const row = document.querySelector(`tr.city-row[data-idx="${{idx}}"]`);
-      if(row) row.style.background = getColor(prob);
-
-      // עדכן טקסט הסיכוי
-      const probCell = row?.querySelector('.prob-cell strong');
-      if(probCell) probCell.textContent = prob.toFixed(2) + '%';
+    function setType(type) {{
+      currentType = type;
+      // עדכן כפתורים
+      ['all','combat','rear','regular'].forEach(t => {{
+        document.getElementById('btn-'+t)?.classList.toggle('active', t===type);
+      }});
+      // עדכן כל שורות הטבלה
+      document.querySelectorAll('tr.city-row').forEach(row => {{
+        const prob = parseFloat(row.dataset[type] || row.dataset.all);
+        row.style.background = getColor(prob);
+        const cell = row.querySelector('.prob-cell strong');
+        if(cell) cell.textContent = prob.toFixed(2) + '%';
+      }});
     }}
     const MIXES = [
       {{name:'⚖️ מאוזן',       p:0.33,f:0.33,a:0.34, risk:'rmed',stars:'●●●○○',riskTxt:'בינוני',
