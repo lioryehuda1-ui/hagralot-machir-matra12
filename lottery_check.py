@@ -93,6 +93,17 @@ def parse_project(row):
         if isinstance(end_date, str) and "T" in end_date:
             end_date = end_date.split("T")[0]
 
+        # סוגי זכאויות
+        combat_homeless = int(row.get("TotalCombatReservistSubscribersStagesHomeless") or 0)
+        rear_homeless = int(row.get("TotalReservedDutySubscribersStagesHomeless") or 0)
+        combat_improve = int(row.get("TotalCombatReservistSubscribersStagesImprovehousing") or 0)
+        rear_improve = int(row.get("TotalReservedDutySubscribersStagesImprovehousing") or 0)
+
+        total_combat = combat_homeless + combat_improve
+        total_rear = rear_homeless + rear_improve
+        total_reservists = total_combat + total_rear
+        total_regular = registered - total_reservists
+
         return {
             "id": row.get("LotteryNumber", ""),
             "city": row.get("CityDescription", ""),
@@ -103,13 +114,17 @@ def parse_project(row):
             "probability": apartments / registered * 100,
             "price_per_sqm": row.get("PricePerUnit", 0),
             "entitlement": row.get("EntitlementDescription", ""),
+            # סוגי זכאויות
+            "combat_total": total_combat,
+            "rear_total": total_rear,
+            "regular_total": total_regular,
         }
     except (ValueError, TypeError):
         return None
 
 
 def group_by_city(projects):
-    """מקבץ הגרלות לפי עיר ומחזיר שורה סיכום לכל עיר."""
+    """מקבץ הגרלות לפי עיר ומחזיר שורה סיכום לכל עיר עם סיכויים לפי סוג זכאות."""
     cities = {}
     for p in projects:
         city = p["city"]
@@ -118,12 +133,18 @@ def group_by_city(projects):
                 "city": city,
                 "apartments": 0,
                 "registered": 0,
+                "combat_total": 0,
+                "rear_total": 0,
+                "regular_total": 0,
                 "lotteries": 0,
                 "end_date": p["end_date"],
                 "entitlements": set(),
             }
         cities[city]["apartments"] += p["apartments"]
         cities[city]["registered"] += p["registered"]
+        cities[city]["combat_total"] += p.get("combat_total", 0)
+        cities[city]["rear_total"] += p.get("rear_total", 0)
+        cities[city]["regular_total"] += p.get("regular_total", 0)
         cities[city]["lotteries"] += 1
         cities[city]["entitlements"].add(p["entitlement"])
         if p["end_date"] > cities[city]["end_date"]:
@@ -137,6 +158,45 @@ def group_by_city(projects):
     for c in cities.values():
         c["probability"] = c["apartments"] / c["registered"] * 100
         c["entitlement"] = " / ".join(sorted(c["entitlements"]))
+
+        # חישוב סיכויים לפי סוג זכאות (אלגוריתם הפרומפט)
+        A_total = c["apartments"]
+        R_combat = c["combat_total"]
+        R_rear = c["rear_total"]
+        R_reg = c["regular_total"]
+
+        # אם אין מידע על מילואים (כלומר, כל הנתונים 0), השתמש בסיכוי כללי לכולם
+        if R_combat == 0 and R_rear == 0:
+            c["prob_combat"] = c["probability"]
+            c["prob_rear"] = c["probability"]
+            c["prob_regular"] = c["probability"]
+        else:
+            A_miluim = A_total * 0.50  # 50% למילואים (25% לוחמים + 25% עורפיים)
+
+            # שלב 1: הגרלת לוחמים
+            W_combat = min(A_miluim * 0.5, R_combat)  # 25% מהדירות הכוללות
+            P1_combat = W_combat / R_combat if R_combat > 0 else 0
+            A_miluim_rem = A_miluim - W_combat
+            R_combat_rem = R_combat - W_combat
+
+            # שלב 2: הגרלת עורפיים
+            W_rear = min(A_miluim_rem, R_rear)
+            P2_rear = W_rear / R_rear if R_rear > 0 else 0
+            R_rear_rem = R_rear - W_rear
+
+            # שלב 3: הגרלה כללית
+            A_gen = A_total - (W_combat + W_rear)
+            G_rem = R_reg + R_combat_rem + R_rear_rem
+            P3_gen = A_gen / G_rem if G_rem > 0 else 0
+
+            # סיכוי סופי לכל סוג
+            P_total_combat = P1_combat + (1 - P1_combat) * P3_gen
+            P_total_rear = P2_rear + (1 - P2_rear) * P3_gen
+            P_total_regular = P3_gen
+
+            c["prob_combat"] = P_total_combat * 100
+            c["prob_rear"] = P_total_rear * 100
+            c["prob_regular"] = P_total_regular * 100
 
         # חישובים פיננסיים (רוכש ראשון: 25% הון עצמי, משכנתא 75%)
         avg_sqm = c.get("price_sum", 0) / c.get("price_count", 1) if c.get("price_count") else 0
@@ -233,26 +293,50 @@ def generate_html(projects, repo_url=""):
     cities_json = json.dumps([
         {"city": c["city"], "sqm": round(c["avg_price_sqm"]), "prob": round(c["probability"], 2),
          "apartments": c["apartments"], "registered": c["registered"],
-         "lotteries": c["lotteries"], "end_date": c["end_date"]}
+         "lotteries": c["lotteries"], "end_date": c["end_date"],
+         "prob_combat": round(c.get("prob_combat", c["probability"]), 2),
+         "prob_rear": round(c.get("prob_rear", c["probability"]), 2),
+         "prob_regular": round(c.get("prob_regular", c["probability"]), 2)}
         for c in sorted_cities
     ], ensure_ascii=False)
 
     rows_html = ""
     for i, c in enumerate(sorted_cities, 1):
-        color = row_color(c["probability"])
         lot_label = f'{c["lotteries"]} הגרלות' if c["lotteries"] > 1 else "הגרלה 1"
         sqm_str = f'₪{c["avg_price_sqm"]:,.0f}' if c["avg_price_sqm"] else "—"
         rows_html += f"""
-        <tr style="background:{color}" onclick="openModal({i-1})" class="clickable">
+        <tr style="background:#fff" class="city-row" data-idx="{i-1}">
           <td style="font-weight:bold;color:#1a5276">{i}</td>
           <td style="font-weight:bold">{c['city']}</td>
           <td style="color:#666;font-size:12px">{lot_label}</td>
           <td>{c['apartments']:,}</td>
           <td>{c['registered']:,}</td>
-          <td><strong>{c['probability']:.2f}%</strong></td>
+          <td class="prob-cell" style="cursor:pointer" onclick="openModal({i-1})">
+            <strong style="color:#1a5276">{c['probability']:.2f}%</strong>
+          </td>
           <td>{sqm_str}</td>
           <td>{c['end_date']}</td>
-          <td style="text-align:center;color:#1a5276;font-size:16px">📊</td>
+          <td style="text-align:center;color:#1a5276;font-size:16px;cursor:pointer" onclick="openModal({i-1})">📊</td>
+        </tr>
+        <tr class="filter-row" data-idx="{i-1}" style="background:#f9f9f9">
+          <td colspan="9" style="padding:10px;text-align:center;font-size:12px">
+            <label style="margin:0 10px;cursor:pointer">
+              <input type="radio" name="type-{i-1}" value="all" checked onchange="updateRow({i-1})">
+              כללי: <span class="prob-all">{c['probability']:.2f}%</span>
+            </label>
+            <label style="margin:0 10px;cursor:pointer">
+              <input type="radio" name="type-{i-1}" value="combat" onchange="updateRow({i-1})">
+              🪖 לוחם: <span class="prob-combat">{c.get('prob_combat', c['probability']):.2f}%</span>
+            </label>
+            <label style="margin:0 10px;cursor:pointer">
+              <input type="radio" name="type-{i-1}" value="rear" onchange="updateRow({i-1})">
+              🎖️ עורפי: <span class="prob-rear">{c.get('prob_rear', c['probability']):.2f}%</span>
+            </label>
+            <label style="margin:0 10px;cursor:pointer">
+              <input type="radio" name="type-{i-1}" value="regular" onchange="updateRow({i-1})">
+              👤 רגיל: <span class="prob-regular">{c.get('prob_regular', c['probability']):.2f}%</span>
+            </label>
+          </td>
         </tr>"""
 
     return f"""<!DOCTYPE html>
@@ -428,6 +512,32 @@ def generate_html(projects, repo_url=""):
     const PRIME=0.06, SPREAD=-0.005, FIXED=0.055, ADJ5=0.048, YRS=25;
     const ROOM_SIZES={{3:83,4:107,5:126,6:140}};
     const AVG_SQM_NATIONAL = 16000;
+
+    // צבע לפי סיכוי זכייה
+    function getColor(prob) {{
+      if(prob >= 5) return '#d4edda';   // ירוק
+      if(prob >= 2) return '#fff3cd';   // צהוב
+      return '#f8d7da';                 // אדום
+    }}
+
+    // עדכן שורה בהתאם לבחירת סוג זכאות
+    function updateRow(idx) {{
+      const selectedType = document.querySelector(`input[name="type-${{idx}}"]:checked`).value;
+      const city = CITIES[idx];
+      let prob = city.prob;
+
+      if(selectedType === 'combat') prob = city.prob_combat;
+      else if(selectedType === 'rear') prob = city.prob_rear;
+      else if(selectedType === 'regular') prob = city.prob_regular;
+
+      // עדכן צבע השורה הראשית
+      const row = document.querySelector(`tr.city-row[data-idx="${{idx}}"]`);
+      if(row) row.style.background = getColor(prob);
+
+      // עדכן טקסט הסיכוי
+      const probCell = row?.querySelector('.prob-cell strong');
+      if(probCell) probCell.textContent = prob.toFixed(2) + '%';
+    }}
     const MIXES = [
       {{name:'⚖️ מאוזן',       p:0.33,f:0.33,a:0.34, risk:'rmed',stars:'●●●○○',riskTxt:'בינוני',
         pros:['פיזור סיכון טוב','גמישות סבירה'],cons:['לא מיטבי בשום תרחיש']}},
