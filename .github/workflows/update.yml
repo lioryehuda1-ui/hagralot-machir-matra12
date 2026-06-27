@@ -1,8 +1,8 @@
 name: עדכון יומי - הגרלות מחיר מטרה
 
 on:
-  schedule:
-    - cron: "0 * * * *"    # כל שעה עגולה
+  # schedule:
+  #   - cron: "0 * * * *"
   workflow_dispatch:        # הפעלה ידנית מ-GitHub
 
 permissions:
